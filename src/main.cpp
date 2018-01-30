@@ -11,13 +11,15 @@
 #include "wx/sizer.h"
 #include "wx/glcanvas.h"
 #include "wx/clrpicker.h"
-#include <wx/log.h> 
+#include "wx/filedlg.h"
 
 #include <array>
 #include <vector>
 #include <random>
 #include <string>
 #include <iostream>
+
+#include <png.h>
 
 class MyApp: public wxApp
 {
@@ -27,7 +29,7 @@ class MyApp: public wxApp
     BasicGLPane * glPane;
 
 public:
- 
+    void onbutton(wxCommandEvent & event);
 };
  
 IMPLEMENT_APP(MyApp)
@@ -63,7 +65,7 @@ const char* fragmentSource = R"glsl(
 bool MyApp::OnInit()
 {
     wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
-    frame = new wxFrame((wxFrame *)NULL, -1,  wxT("Hello GL World"), wxPoint(50,50), wxSize(640,480));
+    frame = new wxFrame((wxFrame *)NULL, -1,  wxT("Pikassho"), wxPoint(50,50), wxSize(640,480));
 
     int args[] = {WX_GL_RGBA, WX_GL_DOUBLEBUFFER, WX_GL_DEPTH_SIZE, 16, WX_GL_CORE_PROFILE, 0};
  
@@ -96,6 +98,11 @@ bool MyApp::OnInit()
         btnssizer->Add(randclr, 1, 0);
     }
 
+    wxButton* savebtn = new wxButton(btns, -1, "Save");
+    btnssizer->Add(savebtn, 1, 0);
+
+    savebtn->Bind(wxEVT_BUTTON, &MyApp::onbutton, this);
+
     glPane->setinitcolors(initcolors);
 
     btns->SetSizer(btnssizer);
@@ -109,8 +116,62 @@ bool MyApp::OnInit()
     frame->Show();
 
     return true;
-} 
- 
+}
+
+static GLubyte *pixels = NULL;
+static png_byte *png_bytes = NULL;
+static png_byte **png_rows = NULL;
+static void screenshot_png(const char *filename, unsigned int width, unsigned int height,
+        GLubyte **pixels, png_byte **png_bytes, png_byte ***png_rows) {
+    size_t i, nvals;
+    const size_t format_nchannels = 4;
+    FILE *f = fopen(filename, "wb");
+    nvals = format_nchannels * width * height;
+
+    *pixels = (GLubyte*) realloc(*pixels, nvals * sizeof(GLubyte));
+    *png_bytes = (png_byte*) realloc(*png_bytes, nvals * sizeof(png_byte));
+    *png_rows = (png_byte**) realloc(*png_rows, height * sizeof(png_byte*));
+
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, *pixels);
+    for (i = 0; i < nvals; i++)
+        (*png_bytes)[i] = (*pixels)[i];
+    for (i = 0; i < height; i++)
+        (*png_rows)[height - i - 1] = &(*png_bytes)[i * width * format_nchannels];
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png) abort();
+    png_infop info = png_create_info_struct(png);
+    if (!info) abort();
+    if (setjmp(png_jmpbuf(png))) abort();
+    png_init_io(png, f);
+    png_set_IHDR(
+        png,
+        info,
+        width,
+        height,
+        8,
+        PNG_COLOR_TYPE_RGBA,
+        PNG_INTERLACE_NONE,
+        PNG_COMPRESSION_TYPE_DEFAULT,
+        PNG_FILTER_TYPE_DEFAULT
+    );
+    png_write_info(png, info);
+    png_write_image(png, *png_rows);
+    png_write_end(png, NULL);
+    png_destroy_write_struct(&png, &info);
+    fclose(f);
+}
+
+void MyApp::onbutton(wxCommandEvent & event)
+{
+    wxFileDialog 
+        saveFileDialog((wxFrame*) NULL, _("Save image"), "", "",
+                       "PNG files (*.png)|*.png", wxFD_SAVE|wxFD_OVERWRITE_PROMPT);
+    if (saveFileDialog.ShowModal() == wxID_CANCEL)
+        return;     // the user changed idea...
+
+    screenshot_png(saveFileDialog.GetPath(), 640, 480, &pixels, &png_bytes, &png_rows);
+}
+
 BEGIN_EVENT_TABLE(BasicGLPane, wxGLCanvas)
 EVT_MOTION(BasicGLPane::mouseMoved)
 EVT_LEFT_DOWN(BasicGLPane::mouseDown)
@@ -211,10 +272,10 @@ void BasicGLPane::setupGL()
 
     GLfloat vertices[] = {
     //  Position      Color             Texcoords
-        -0.5f,  0.5f, 0.0f, 0.0f, // Top-left
-         0.5f,  0.5f, 1.0f, 0.0f, // Top-right
-         0.5f, -0.5f, 1.0f, 1.0f, // Bottom-right
-        -0.5f, -0.5f, 0.0f, 1.0f  // Bottom-left
+        -1.0f,  1.0f, 0.0f, 0.0f, // Top-left
+         1.0f,  1.0f, 1.0f, 0.0f, // Top-right
+         1.0f, -1.0f, 1.0f, 1.0f, // Bottom-right
+        -1.0f, -1.0f, 0.0f, 1.0f  // Bottom-left
     };
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
