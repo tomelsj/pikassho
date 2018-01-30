@@ -10,7 +10,7 @@ There is also a save button, that actually is working. Saves the output of the O
 Sadly it gives the resulting image an transparent half as it sets the width to whole screen.
 
 The function of the program is that it random generates x amount of colors (4 + up to additional 4 I belive).
-Then it passthe colors to the OpenGL function that generates a texture based on the colors.
+Then it pass the colors to the OpenGL function that generates a texture based on the colors.
 The texture is supposed to be "random". It puts colors at random points on the texture and then use the first best
 color closest.
 
