@@ -3,11 +3,12 @@
  
 #include "wx/wx.h"
 #include "wx/glcanvas.h"
+
+#include <vector>
  
 class BasicGLPane : public wxGLCanvas
 {
-    private:
-
+private:
     wxGLContext*	m_context;
 
     GLuint vao;
@@ -20,11 +21,15 @@ class BasicGLPane : public wxGLCanvas
 
     bool havesetup;
 
+    std::vector<int> basecolors;
+
     void setupGL();
  
 public:
 	BasicGLPane(wxFrame* parent, int* args);
 	virtual ~BasicGLPane();
+
+    void setinitcolors(std::vector<int> thecolors);
 
 	void resized(wxSizeEvent& evt);
 

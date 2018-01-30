@@ -10,13 +10,14 @@
 #include "wx/wx.h"
 #include "wx/sizer.h"
 #include "wx/glcanvas.h"
-#include <wx/clrpicker.h>
+#include "wx/clrpicker.h"
+#include <wx/log.h> 
 
 #include <array>
+#include <vector>
 #include <random>
 #include <string>
 #include <iostream>
-#include <wx/log.h> 
 
 class MyApp: public wxApp
 {
@@ -68,7 +69,39 @@ bool MyApp::OnInit()
  
     glPane = new BasicGLPane( (wxFrame*) frame, args);
 
+    wxPanel* btns = new wxPanel((wxFrame*) frame);
+
+    wxBoxSizer* btnssizer = new wxBoxSizer(wxVERTICAL);
+
+    std::random_device rd;
+    std::mt19937 mt(rd());
+    std::uniform_real_distribution<float> dist(0.0, 255.0);
+    std::vector<int> initcolors;
+
+    int colors = (int) dist(mt) % 4 + 4;
+
+    for(int i = 0; i < colors; i++)
+    {
+        int red = round(dist(mt));
+        int green = round(dist(mt));
+        int blue = round(dist(mt));
+
+        initcolors.push_back(red);
+        initcolors.push_back(green);
+        initcolors.push_back(blue);
+
+        wxColourPickerCtrl* randclr = new wxColourPickerCtrl(
+            btns, 1337 + i, wxColour(red, green, blue));
+        
+        btnssizer->Add(randclr, 1, 0);
+    }
+
+    glPane->setinitcolors(initcolors);
+
+    btns->SetSizer(btnssizer);
+
     sizer->Add(glPane, 1, wxEXPAND);
+    sizer->Add(btns, 1, wxEXPAND);
  
     frame->SetSizer(sizer);
     frame->SetAutoLayout(true);
@@ -106,10 +139,6 @@ BasicGLPane::BasicGLPane(wxFrame* parent, int* args) :
 {
 	m_context = new wxGLContext(this);
 
-    wxColourPickerCtrl* semla = new wxColourPickerCtrl(
-        this,
-        32525335532);
-
     havesetup = false;
  
     // To avoid flashing on MSW
@@ -129,6 +158,11 @@ BasicGLPane::~BasicGLPane()
 
     glDeleteVertexArrays(1, &vao);
 	delete m_context;
+}
+
+void BasicGLPane::setinitcolors(std::vector<int> thecolors)
+{
+    basecolors = thecolors;
 }
  
 void BasicGLPane::resized(wxSizeEvent& evt)
@@ -247,20 +281,74 @@ void BasicGLPane::setupGL()
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    std::array<float, 192> pixels;
+    int allcolors = basecolors.size() / 3;
+    const int texturewidth = 128;
+    const int textureheight = 128;
+    constexpr int texturesize = texturewidth * textureheight;
+
+    float pixels[texturesize * 3];
     std::random_device rd;
     std::mt19937 mt(rd());
-    std::uniform_real_distribution<float> dist(0.0, 1.0);
-    for (int i = 0; i < 192; i += 3) {
-        pixels[i] = dist(mt);
-        pixels[i+1] = dist(mt);
-        pixels[i+2] = dist(mt);
+    std::uniform_int_distribution<int> posdist(0, texturewidth);
+
+    struct ColorPoint {
+        int x;
+        int y;
+        int clridx;
+
+        ColorPoint(int paramx, int paramy, int parmclridx) : x(paramx), y(paramy), clridx(parmclridx) {}
+    };
+
+    std::vector<ColorPoint> points;
+
+    for (int i = 0; i < allcolors; i++)
+    {
+        ColorPoint cp(posdist(mt), posdist(mt), i * 3);
+
+        points.push_back(cp);
     }
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 8, 8, 0, GL_RGB, GL_FLOAT, pixels.data());
+    int colorpointcount = allcolors;
+
+    //Select the nearest point
+    for (int i = 0; i < texturesize * 3; i = i + 3)
+    {
+        int nearest;
+        int x = i % (texturewidth * 3);
+        int y = (int) (i - 3) / (texturewidth * 3);
+        int cmpdist = -1;
+
+        for (int cpj = 0; cpj < colorpointcount; cpj++)
+        {
+            int pointdistx = points[cpj].x - x;
+            pointdistx = pointdistx * pointdistx;
+            int pointdisty = points[cpj].y - y;
+            pointdisty = pointdisty * pointdisty;
+
+            if(cmpdist < 0 || pointdistx + pointdisty < cmpdist)
+            {
+                cmpdist = pointdistx + pointdisty;
+                nearest = cpj;
+            }
+        }
+
+        pixels[i] = basecolors[points[nearest].clridx] / 255.0;
+        pixels[i + 1] = basecolors[points[nearest].clridx + 1] / 255.0;
+        pixels[i + 2] = basecolors[points[nearest].clridx + 2] / 255.0;
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 
+        0, 
+        GL_RGB, 
+        texturewidth, 
+        textureheight, 
+        0, 
+        GL_RGB,
+        GL_FLOAT, 
+        pixels);
 }
 
 void BasicGLPane::render( wxPaintEvent& evt )
